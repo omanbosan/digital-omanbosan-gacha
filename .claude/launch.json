@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "おまんぼガチャ (Python static server)",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8080", "--directory", "/Users/omanbosan/Desktop/omanbosan/開発/デジタルおまんぼガチャ"],
+      "port": 8080
+    }
+  ]
+}
