@@ -48,6 +48,17 @@
   .denied { text-align:center; padding:20px 0; }
   .denied .icon { font-size:2.5rem; margin-bottom:10px; }
   .denied .text { font-size:0.85rem; color:#ff6666; line-height:1.6; }
+  #redeem-box { margin-top:16px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); }
+  .redeem-label { font-size:0.72rem; color:#ffaa44; margin-bottom:8px; text-align:center; }
+  .redeem-quick { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; justify-content:center; }
+  .redeem-quick button {
+    width:auto; flex:0 0 auto; padding:7px 12px; font-size:0.78rem;
+    background:rgba(255,220,0,0.12); border:1px solid rgba(255,220,0,0.4); color:#ffe566;
+  }
+  .redeem-quick button:disabled { opacity:0.3; }
+  .redeem-custom { display:flex; gap:6px; }
+  .redeem-custom input { margin-bottom:0; flex:1; }
+  .redeem-custom button { width:auto; flex:0 0 auto; padding:10px 16px; font-size:0.8rem; }
 </style>
 </head>
 <body>
@@ -79,6 +90,16 @@
       <div class="pt"><span id="result-pt">0</span> pt</div>
       <div class="code">コード: <span id="result-code"></span></div>
       <div class="updated">最終更新: <span id="result-updated"></span></div>
+
+      <div id="redeem-box">
+        <div class="redeem-label">クーポン利用（1pt = 1円、100pt単位）</div>
+        <div class="redeem-quick" id="redeem-quick"></div>
+        <div class="redeem-custom">
+          <input id="redeem-amount" type="number" step="100" min="100" placeholder="金額（100の倍数）">
+          <button id="redeem-btn">利用する</button>
+        </div>
+        <div id="redeem-msg" class="msg"></div>
+      </div>
     </div>
   </div>
 </div>
@@ -108,6 +129,8 @@ function loadStats() {
 
 document.getElementById('stats-refresh').addEventListener('click', loadStats);
 
+var currentCode = null; // 検索中/交換対象のコード
+
 document.getElementById('search-btn').addEventListener('click', function() {
   var code = document.getElementById('code').value.trim().toUpperCase();
   var resultEl = document.getElementById('result');
@@ -121,9 +144,11 @@ document.getElementById('search-btn').addEventListener('click', function() {
     .withSuccessHandler(function(data) {
       btn.disabled = false;
       msgEl.textContent = '';
+      currentCode = data.code;
       document.getElementById('result-pt').textContent = data.points;
       document.getElementById('result-code').textContent = data.code;
       document.getElementById('result-updated').textContent = data.updatedAt ? new Date(data.updatedAt).toLocaleString('ja-JP') : '-';
+      renderRedeemQuickButtons(data.points);
       resultEl.style.display = 'block';
     })
     .withFailureHandler(function(err) {
@@ -136,6 +161,53 @@ document.getElementById('search-btn').addEventListener('click', function() {
 
 document.getElementById('code').addEventListener('keydown', function(e) {
   if (e.keyCode === 13) document.getElementById('search-btn').click();
+});
+
+// ===== クーポン利用（ポイント消費） =====
+var REDEEM_QUICK_AMOUNTS = [100, 200, 300, 500];
+
+function renderRedeemQuickButtons(points) {
+  var wrap = document.getElementById('redeem-quick');
+  wrap.innerHTML = '';
+  REDEEM_QUICK_AMOUNTS.forEach(function(amt) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = amt + '円分';
+    b.disabled = points < amt;
+    b.addEventListener('click', function() { doRedeem(amt); });
+    wrap.appendChild(b);
+  });
+}
+
+function doRedeem(amount) {
+  var msgEl = document.getElementById('redeem-msg');
+  if (!currentCode) return;
+  amount = Number(amount);
+  if (!amount || amount <= 0 || amount % 100 !== 0) {
+    msgEl.className = 'msg error'; msgEl.textContent = '100の倍数で指定してください';
+    return;
+  }
+  if (!confirm(currentCode + ' さんのポイントから ' + amount + '円分（' + amount + 'pt）を利用します。よろしいですか？')) return;
+
+  msgEl.className = 'msg'; msgEl.textContent = '処理中...';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      msgEl.className = 'msg';
+      msgEl.textContent = amount + '円分を利用しました（残り ' + data.points + 'pt）';
+      document.getElementById('result-pt').textContent = data.points;
+      renderRedeemQuickButtons(data.points);
+      loadStats();
+    })
+    .withFailureHandler(function(err) {
+      msgEl.className = 'msg error';
+      msgEl.textContent = (err && err.message) || '利用に失敗しました';
+    })
+    .redeemGachaPointsForAdmin(currentCode, amount);
+}
+
+document.getElementById('redeem-btn').addEventListener('click', function() {
+  var v = document.getElementById('redeem-amount').value;
+  doRedeem(v);
 });
 
 // ===== 初期化 =====

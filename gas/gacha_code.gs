@@ -16,17 +16,19 @@
 //    （1)の匿名アクセスでは常に空文字になるため、自然にアクセス不可になる）。
 // ============================================================
 
-// 管理画面へのアクセスを許可するGoogleアカウント
-const GACHA_ADMIN_EMAILS = ['omanbosan.lv@gmail.com'];
+// 管理画面へのアクセスを許可するGoogleアカウント一覧は、コード直書きではなく
+// スプレッドシートの admin_users シートで管理する（初回だけこの値で自動登録する）。
+const GACHA_ADMIN_EMAILS_SEED = ['omanbosan.lv@gmail.com'];
+const GACHA_ADMIN_SHEET_NAME = 'admin_users';
 
 const GACHA_BONUS_WORD = 'おまんぼ';
 const GACHA_FORTUNES = [
-  { key:'daigichi', pt:50, weight:10  },
-  { key:'kichi',    pt:10, weight:50  },
-  { key:'chukichi', pt:5,  weight:100 },
-  { key:'shokichi', pt:3,  weight:150 },
-  { key:'suekichi', pt:1,  weight:200 },
-  { key:'kyo',      pt:0,  weight:490 },
+  { key:'daigichi', pt:300, weight:10  },
+  { key:'kichi',    pt:100, weight:50  },
+  { key:'chukichi', pt:10,  weight:100 },
+  { key:'shokichi', pt:5,   weight:150 },
+  { key:'suekichi', pt:3,   weight:200 },
+  { key:'kyo',      pt:1,   weight:490 },
 ];
 // 列: id, code, points, createdAt, updatedAt, usedDate, usedToday, bonusUsed
 const GACHA_HEADERS = ['id','code','points','createdAt','updatedAt','usedDate','usedToday','bonusUsed'];
@@ -82,9 +84,34 @@ function doPost(e) { return err('GETを使用してください'); }
 // ============================================================
 //  認証（パスワードではなく、ログイン中のGoogleアカウントで判定）
 // ============================================================
+function ensureGachaAdminUsersSheet() {
+  const ss = getSpreadsheet();
+  var sh = ss.getSheetByName(GACHA_ADMIN_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(GACHA_ADMIN_SHEET_NAME);
+    sh.getRange(1,1,1,2).setValues([['email','note']]);
+    sh.getRange(1,1,1,2).setBackground('#1a1a2e').setFontColor('#c8a84a').setFontWeight('bold');
+    sh.setFrozenRows(1);
+    GACHA_ADMIN_EMAILS_SEED.forEach(function(email) { sh.appendRow([email, '初期登録']); });
+  }
+  return sh;
+}
+
+// admin_users シートのemail列を読み、許可されたGoogleアカウント一覧を返す
+function getAllowedGachaAdminEmails() {
+  const sh = ensureGachaAdminUsersSheet();
+  const rows = sh.getDataRange().getValues();
+  var emails = [];
+  for (var i = 1; i < rows.length; i++) {
+    var email = (rows[i][0] || '').toString().trim().toLowerCase();
+    if (email) emails.push(email);
+  }
+  return emails;
+}
+
 function isAdminUser() {
-  var email = Session.getActiveUser().getEmail();
-  return !!email && GACHA_ADMIN_EMAILS.indexOf(email) !== -1;
+  var email = (Session.getActiveUser().getEmail() || '').toLowerCase();
+  return !!email && getAllowedGachaAdminEmails().indexOf(email) !== -1;
 }
 
 function getCurrentUserEmail() {
@@ -102,6 +129,14 @@ function getGachaStatsForAdmin() {
 function getGachaLookupForAdmin(code) {
   if (!isAdminUser()) throw new Error('このアカウント(' + (getCurrentUserEmail() || '未ログイン') + ')には権限がありません');
   var parsed = JSON.parse(handleGachaLookup({ code: code }).getContent());
+  if (!parsed.ok) throw new Error(parsed.error);
+  return parsed.data;
+}
+// マルシェ現地でのクーポン利用（ポイント消費）。1pt=1円、100pt単位でのみ実行可能。
+// 生のJSON APIとしては公開せず、管理画面(要Googleログイン)からのみ呼べるようにする。
+function redeemGachaPointsForAdmin(code, amount) {
+  if (!isAdminUser()) throw new Error('このアカウント(' + (getCurrentUserEmail() || '未ログイン') + ')には権限がありません');
+  var parsed = JSON.parse(handleGachaRedeem({ code: code, amount: amount, staffEmail: getCurrentUserEmail() }).getContent());
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.data;
 }
@@ -289,6 +324,50 @@ function handleGachaLookup(data) {
   for (var i = 1; i < rows.length; i++) {
     if ((rows[i][1] || '').toString().toUpperCase() === code) {
       return ok({ code: rows[i][1], points: rows[i][2], updatedAt: rows[i][4] });
+    }
+  }
+  return err('そのコードは見つかりません');
+}
+
+const GACHA_REDEMPTIONS_SHEET_NAME = 'redemptions';
+const GACHA_REDEMPTIONS_HEADERS = ['id','code','amount','pointsAfter','staffEmail','createdAt'];
+
+function ensureRedemptionsSheet() {
+  const ss = getSpreadsheet();
+  var sh = ss.getSheetByName(GACHA_REDEMPTIONS_SHEET_NAME);
+  if (!sh) {
+    sh = ss.insertSheet(GACHA_REDEMPTIONS_SHEET_NAME);
+    sh.getRange(1,1,1,GACHA_REDEMPTIONS_HEADERS.length).setValues([GACHA_REDEMPTIONS_HEADERS]);
+    sh.getRange(1,1,1,GACHA_REDEMPTIONS_HEADERS.length).setBackground('#1a1a2e').setFontColor('#c8a84a').setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  return sh;
+}
+
+// data: { code, amount, staffEmail } — マルシェ現地でのクーポン利用（1pt=1円、100pt単位のみ）。
+// amountが100の倍数か・残高が足りているかをここで検証し、消費と同時に redemptions シートへ記録する。
+function handleGachaRedeem(data) {
+  const code = (data.code || '').toString().trim().toUpperCase();
+  const amount = Number(data.amount) || 0;
+  if (!code) return err('コードが必要です');
+  if (amount <= 0 || amount % 100 !== 0) return err('交換ポイントは100の倍数で指定してください');
+
+  const sh = ensureGachaSheet();
+  const rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if ((rows[i][1] || '').toString().toUpperCase() === code) {
+      const currentPoints = Number(rows[i][2]) || 0;
+      if (currentPoints < amount) {
+        return err('ポイントが不足しています（保有: ' + currentPoints + 'pt）', { points: currentPoints });
+      }
+      const newPoints = currentPoints - amount;
+      sh.getRange(i+1, 3).setValue(newPoints);
+      sh.getRange(i+1, 5).setValue(new Date());
+
+      const rSh = ensureRedemptionsSheet();
+      rSh.appendRow([Utilities.getUuid(), code, amount, newPoints, data.staffEmail || '', new Date()]);
+
+      return ok({ code: code, amount: amount, points: newPoints });
     }
   }
   return err('そのコードは見つかりません');

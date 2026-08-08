@@ -99,8 +99,6 @@ body {
 }
 #exchange-btn:hover { transform: scale(1.06); }
 #exchange-btn:active { transform: scale(0.95); }
-#exchange-btn { display: none !important; }
-#exchange-popup { display: none !important; }
 
 /* ===== REMAINING COUNTER ===== */
 #remaining-bar {
@@ -245,6 +243,14 @@ h1 {
   transition:color 0.15s;
 }
 .exchange-close:hover { color:#fff; }
+.save-coupon-btn {
+  margin-top:6px; margin-bottom:8px; width:100%;
+  background:linear-gradient(135deg,#6644cc,#cc44aa); color:#fff;
+  border:none; border-radius:20px;
+  padding:9px 24px; font-size:0.85rem; font-weight:900;
+  font-family:'Noto Sans JP',sans-serif; cursor:pointer;
+  box-shadow:0 0 10px rgba(150,60,220,0.5);
+}
 
 /* ===== RESULT POPUP ===== */
 #result-popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:100; pointer-events:none; opacity:0; }
@@ -392,7 +398,7 @@ h1 {
   <span class="pt-label">MY PT</span>
   <span id="point-display">0</span>
   <span class="pt-unit">pt</span>
-  <button id="exchange-btn">ポイント確認 ⭐</button>
+  <button id="exchange-btn">クーポンを見る 🎟️</button>
 </div>
 
 <!-- あなたのコード（マルシェ現地でスタッフに見せる用） -->
@@ -466,9 +472,10 @@ h1 {
 <div id="exchange-popup">
   <div class="popup-backdrop" id="ex-backdrop"></div>
   <div class="exchange-card">
-    <div class="exchange-title">🎁 景品交換</div>
+    <div class="exchange-title">🎟️ マルシェクーポン</div>
     <div id="exchange-list"></div>
     <div id="exchange-msg" style="display:none;background:rgba(0,255,100,0.1);border:1px solid #44ff88;border-radius:10px;padding:10px;font-size:0.8rem;color:#44ff88;margin-bottom:10px;line-height:1.5;"></div>
+    <button class="save-coupon-btn" id="save-coupon-btn">📸 画像を保存してマルシェで見せる</button>
     <button class="exchange-close" id="exchange-close">とじる</button>
   </div>
 </div>
@@ -488,13 +495,15 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbz5weQOhIzUfjtwI7EIY8Bv3Q
 var _mem = { points: 0, usedToday: 0, usedDate: '', bonusUsed: false, code: null };
 
 // ===== 運勢テーブル =====
+// pt/weightは表示用の参考値（見た目のラベル・色・絵文字を引くためだけに使う）。
+// 実際に何ptもらえるかはサーバー(gachaSpin)が権威を持つ。値はgas/gacha_code.gsのGACHA_FORTUNESと一致させておくこと。
 var fortunes = [
-  { key:'daigichi', label:'1等賞', color:'#ffbb00', emoji:'🌟', pt:50, weight:10  },
-  { key:'kichi',    label:'2等賞', color:'#ff8833', emoji:'✨', pt:10, weight:50  },
-  { key:'chukichi', label:'3等賞', color:'#44aaff', emoji:'🍀', pt:5,  weight:100 },
-  { key:'shokichi', label:'4等賞', color:'#44cc88', emoji:'🌱', pt:3,  weight:150 },
-  { key:'suekichi', label:'5等賞', color:'#bb99ff', emoji:'🌺', pt:1,  weight:200 },
-  { key:'kyo',      label:'はずれ', color:'#888888', emoji:'😅', pt:0,  weight:490 }
+  { key:'daigichi', label:'1等賞', color:'#ffbb00', emoji:'🌟', pt:300, weight:10  },
+  { key:'kichi',    label:'2等賞', color:'#ff8833', emoji:'✨', pt:100, weight:50  },
+  { key:'chukichi', label:'3等賞', color:'#44aaff', emoji:'🍀', pt:10,  weight:100 },
+  { key:'shokichi', label:'4等賞', color:'#44cc88', emoji:'🌱', pt:5,   weight:150 },
+  { key:'suekichi', label:'5等賞', color:'#bb99ff', emoji:'🌺', pt:3,   weight:200 },
+  { key:'kyo',      label:'はずれ', color:'#888888', emoji:'😅', pt:1,   weight:490 }
 ];
 
 // ===== ポイント交換景品 =====
@@ -1141,14 +1150,17 @@ function resetAll() {
 function buildExchangeList() {
   var list = document.getElementById('exchange-list');
   var pt   = getPoints();
+  var code = _mem.code || '---';
   list.innerHTML =
     '<div style="text-align:center;padding:18px 0;">' +
-    '<div style="font-size:2rem;margin-bottom:8px;">✨</div>' +
+    '<div style="font-size:2rem;margin-bottom:8px;">🎟️</div>' +
     '<div style="font-size:0.9rem;color:#ffe566;font-weight:900;margin-bottom:8px;">' +
-    '現在のポイント：' + pt + ' pt</div>' +
-    '<div style="font-size:0.78rem;color:#cc99aa;line-height:1.7;">' +
-    '景品は目下準備中です♪<br>' +
-    'ポイントはそのまま貯めておいてね！</div>' +
+    '現在のポイント：' + pt + ' pt（' + pt + '円相当）</div>' +
+    '<div style="font-size:0.78rem;color:#cc99aa;line-height:1.8;">' +
+    '1pt＝1円として、マルシェ会場でのお買い物クーポンに使えます（100pt単位）。<br>' +
+    'マルシェ当日、スタッフに下のコードを見せてください。<br>' +
+    '<span style="display:inline-block;margin-top:8px;font-size:1.1rem;font-weight:900;color:#ffe566;letter-spacing:0.14em;">' + code + '</span>' +
+    '</div>' +
     '</div>';
 }
 
@@ -1250,6 +1262,67 @@ document.getElementById('exchange-close').addEventListener('click', function() {
 document.getElementById('ex-backdrop').addEventListener('click', function() {
   document.getElementById('exchange-popup').classList.remove('show');
 });
+document.getElementById('save-coupon-btn').addEventListener('click', saveCouponImage);
+
+// クーポン画像を生成して保存する。外部ライブラリを使わず、Canvasで自前描画する。
+// スマホ(iOS/Androidとも)ではポップアップウィンドウに画像を開き、長押しで保存してもらう方式が
+// 一番確実なので、それをメインに。ポップアップがブロックされた場合はダウンロードリンクにフォールバック。
+function saveCouponImage() {
+  var canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 380;
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#12000a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#ffbb00';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(10, 10, canvas.width-20, canvas.height-20);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffe566';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillText('🎟️ おまんぼガチャ マルシェクーポン', canvas.width/2, 60);
+
+  var pt = getPoints();
+  ctx.fillStyle = '#ffe566';
+  ctx.font = 'bold 56px sans-serif';
+  ctx.fillText(pt + ' pt', canvas.width/2, 150);
+  ctx.fillStyle = '#cc99aa';
+  ctx.font = '18px sans-serif';
+  ctx.fillText('(' + pt + '円相当・100pt単位で利用可)', canvas.width/2, 180);
+
+  ctx.fillStyle = '#cc99ff';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('あなたのコード', canvas.width/2, 235);
+  ctx.fillStyle = '#ffe566';
+  ctx.font = 'bold 44px monospace';
+  ctx.fillText(_mem.code || '---', canvas.width/2, 290);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('保存日時: ' + new Date().toLocaleString('ja-JP'), canvas.width/2, 340);
+
+  var dataUrl = canvas.toDataURL('image/png');
+  var win = window.open('', '_blank');
+  if (win) {
+    win.document.write(
+      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>おまんぼガチャ クーポン</title></head>' +
+      '<body style="margin:0;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;">' +
+      '<img src="' + dataUrl + '" style="max-width:95vw;border-radius:12px;">' +
+      '<p style="color:#fff;font-size:14px;margin-top:14px;">画像を長押しして「写真に保存」を選んでください</p>' +
+      '</body></html>'
+    );
+    win.document.close();
+  } else {
+    // ポップアップがブロックされた場合のフォールバック（PCなどで有効）
+    var a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = 'omanbo-coupon-' + (_mem.code || 'code') + '.png';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  }
+}
 document.getElementById('bonus-btn').addEventListener('click', doBonus);
 document.getElementById('bonus-input').addEventListener('keydown', function(e) {
   if (e.keyCode === 13) doBonus();
@@ -1315,6 +1388,18 @@ v18.0 (2026-08-08): サーバー側ポイント連携・不正対策強化
     クライアントは結果を自己申告できず、サーバーが返した結果をそのまま表示するだけになった
   - 合言葉ボーナスの正誤判定・使用済み判定もサーバー(gachaBonus)側に移動
   - スタッフ用管理ページ(gacha-admin.html)から、全体のプレイ人数・合計ポイント・本日プレイ人数を集計できる(gachaStats)
+v18.1 (2026-08-08): ガチャ専用GASへ移行・Googleアカウント管理画面・マルシェクーポン化
+  - marche-systemとは別の専用GASプロジェクトに移行（GAS_URLを変更）
+  - 管理画面はパスワードではなくGoogleアカウント(admin_usersシート)で許可制に変更
+  - 「景品」を「1pt=1円のマルシェ会場クーポン(100pt単位)」として確定。交換ボタン・ポップアップの文言を更新し、
+    実際の利用（ポイント消費）はスタッフが管理画面でコードを検索し、100pt単位で処理する(redeemGachaPointsForAdmin)
+  - v17は直接開かれた場合に備えv18への自動転送を追加
+v18.2 (2026-08-08): ポイント構成変更・クーポン画像保存機能
+  - ポイント構成を変更（1等300pt/2等100pt/3等10pt/4等5pt/5等3pt/はずれ1pt、weightは維持）
+    - これに伴い期待値は2.15pt/回→10.84pt/回に増加（マルシェクーポンの原資として要注意）
+  - 交換ポップアップに「画像を保存してマルシェで見せる」ボタンを追加。外部ライブラリなしで
+    Canvasにコード・ポイントを描画し、新規タブに開いて長押し保存してもらう方式(saveCouponImage)
+  - #exchange-popup自体に残っていた display:none!important の消し忘れを修正（クーポンを見るボタンが機能していなかった）
 =================
 -->
 
