@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<meta charset="UTF-8">
+<title>おまんぼガチャ 管理</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    min-height: 100vh; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    font-family: 'Noto Sans JP', sans-serif; background:#0a0008; color:#eee; padding:20px;
+  }
+  .card {
+    width:100%; max-width:360px; background:rgba(255,255,255,0.05);
+    border:1.5px solid rgba(255,180,0,0.4); border-radius:16px; padding:24px;
+  }
+  h1 { font-size:1.1rem; color:#ffe566; margin-bottom:4px; text-align:center; }
+  .sub { font-size:0.72rem; color:#cc99ff; text-align:center; margin-bottom:14px; }
+  .whoami { font-size:0.68rem; color:#999; text-align:center; margin-bottom:16px; }
+  label { display:block; font-size:0.75rem; color:#ffaa44; margin-bottom:4px; }
+  input {
+    width:100%; padding:10px 12px; margin-bottom:12px; border-radius:8px;
+    border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:1rem;
+  }
+  input::placeholder { color:#777; }
+  button {
+    width:100%; padding:11px; border:none; border-radius:20px; font-weight:900; font-size:0.9rem;
+    background:linear-gradient(135deg,#cc6600,#ff3388); color:#fff; cursor:pointer;
+  }
+  button:disabled { opacity:0.5; cursor:default; }
+  .msg { margin-top:12px; font-size:0.8rem; text-align:center; line-height:1.5; }
+  .msg.error { color:#ff6666; }
+  .result {
+    margin-top:16px; padding:14px; border-radius:12px; background:rgba(0,0,0,0.35);
+    border:1px solid rgba(255,220,0,0.3); display:none;
+  }
+  .result .pt { font-size:2rem; font-weight:900; color:#ffe566; text-align:center; }
+  .result .code { font-size:0.75rem; color:#cc99ff; text-align:center; margin-top:4px; letter-spacing:0.1em; }
+  .result .updated { font-size:0.68rem; color:#999; text-align:center; margin-top:6px; }
+  .stats { display:flex; gap:8px; margin-bottom:14px; }
+  .stat-box {
+    flex:1; background:rgba(0,0,0,0.35); border:1px solid rgba(255,220,0,0.25);
+    border-radius:10px; padding:10px 4px; text-align:center;
+  }
+  .stat-box .num { font-size:1.25rem; font-weight:900; color:#ffe566; }
+  .stat-box .label { font-size:0.6rem; color:#cc99ff; margin-top:2px; }
+  .refresh { font-size:0.68rem; color:#999; text-align:right; margin-bottom:10px; cursor:pointer; text-decoration:underline; }
+  .denied { text-align:center; padding:20px 0; }
+  .denied .icon { font-size:2.5rem; margin-bottom:10px; }
+  .denied .text { font-size:0.85rem; color:#ff6666; line-height:1.6; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>🎁 おまんぼガチャ 管理</h1>
+  <div class="sub">Googleアカウントでログイン中のスタッフのみアクセスできます</div>
+  <div class="whoami" id="whoami">確認中...</div>
+
+  <div id="denied-box" class="denied" style="display:none;">
+    <div class="icon">🚫</div>
+    <div class="text" id="denied-text"></div>
+  </div>
+
+  <div id="main-box" style="display:none;">
+    <div class="stats">
+      <div class="stat-box"><div class="num" id="stat-count">-</div><div class="label">プレイ人数</div></div>
+      <div class="stat-box"><div class="num" id="stat-total">-</div><div class="label">合計pt</div></div>
+      <div class="stat-box"><div class="num" id="stat-today">-</div><div class="label">本日プレイ</div></div>
+    </div>
+    <div class="refresh" id="stats-refresh">🔄 更新</div>
+
+    <label for="code">お客様のコード（6桁）</label>
+    <input id="code" type="text" placeholder="例: A3F7Q2" maxlength="6" style="text-transform:uppercase;letter-spacing:0.15em;">
+    <button id="search-btn">検索</button>
+    <div id="search-msg" class="msg"></div>
+
+    <div id="result" class="result">
+      <div class="pt"><span id="result-pt">0</span> pt</div>
+      <div class="code">コード: <span id="result-code"></span></div>
+      <div class="updated">最終更新: <span id="result-updated"></span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// 権限が無いアカウントの場合は getGachaStatsForAdmin が例外を返すので、
+// それをトリガーに「アクセス権なし」表示へ切り替える。
+function loadStats() {
+  ['stat-count','stat-total','stat-today'].forEach(function(id) {
+    document.getElementById(id).textContent = '…';
+  });
+  google.script.run
+    .withSuccessHandler(function(data) {
+      document.getElementById('main-box').style.display = 'block';
+      document.getElementById('denied-box').style.display = 'none';
+      document.getElementById('stat-count').textContent = data.count;
+      document.getElementById('stat-total').textContent = data.totalPoints;
+      document.getElementById('stat-today').textContent = data.todayActive;
+    })
+    .withFailureHandler(function(err) {
+      document.getElementById('main-box').style.display = 'none';
+      document.getElementById('denied-box').style.display = 'block';
+      document.getElementById('denied-text').textContent = (err && err.message) || 'アクセス権がありません';
+    })
+    .getGachaStatsForAdmin();
+}
+
+document.getElementById('stats-refresh').addEventListener('click', loadStats);
+
+document.getElementById('search-btn').addEventListener('click', function() {
+  var code = document.getElementById('code').value.trim().toUpperCase();
+  var resultEl = document.getElementById('result');
+  var msgEl = document.getElementById('search-msg');
+  resultEl.style.display = 'none';
+  if (!code) { msgEl.className = 'msg error'; msgEl.textContent = 'コードを入力してください'; return; }
+  var btn = this;
+  btn.disabled = true;
+  msgEl.className = 'msg'; msgEl.textContent = '検索中...';
+  google.script.run
+    .withSuccessHandler(function(data) {
+      btn.disabled = false;
+      msgEl.textContent = '';
+      document.getElementById('result-pt').textContent = data.points;
+      document.getElementById('result-code').textContent = data.code;
+      document.getElementById('result-updated').textContent = data.updatedAt ? new Date(data.updatedAt).toLocaleString('ja-JP') : '-';
+      resultEl.style.display = 'block';
+    })
+    .withFailureHandler(function(err) {
+      btn.disabled = false;
+      msgEl.className = 'msg error';
+      msgEl.textContent = (err && err.message) || '見つかりませんでした';
+    })
+    .getGachaLookupForAdmin(code);
+});
+
+document.getElementById('code').addEventListener('keydown', function(e) {
+  if (e.keyCode === 13) document.getElementById('search-btn').click();
+});
+
+// ===== 初期化 =====
+google.script.run
+  .withSuccessHandler(function(email) {
+    document.getElementById('whoami').textContent = email ? ('ログイン中: ' + email) : '未ログイン';
+  })
+  .withFailureHandler(function() {
+    document.getElementById('whoami').textContent = '';
+  })
+  .getCurrentUserEmail();
+
+loadStats();
+</script>
+
+</body>
+</html>
