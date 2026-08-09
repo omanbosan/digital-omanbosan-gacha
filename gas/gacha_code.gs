@@ -6,20 +6,15 @@
 //    すべてこのサーバー側で行う。クライアントは結果を自己申告できない。
 //  ・データ保存先のスプレッドシートは初回アクセス時に自動作成し、
 //    Script Properties に SPREADSHEET_ID を保存して以後使い回す。
-//  ・管理者画面はパスワードではなく「ログイン中のGoogleアカウント」で判定する。
-//    このデプロイは2種類のURLで公開する:
-//      1) 公開用(誰でもアクセス可・Googleログイン不要) → お客様のガチャ本体から呼ぶ
-//      2) 管理者用(Googleアカウントでのログインが必須) → gacha_v18.htmlではなく、
-//         このURLを直接ブラウザで開くと管理画面(HTML)が表示される。
-//    2)のURLでアクセスした場合のみ Session.getActiveUser().getEmail() で
-//    ログイン中のメールアドレスが取得できる仕様を利用している
-//    （1)の匿名アクセスでは常に空文字になるため、自然にアクセス不可になる）。
+//  ・管理者画面はスタッフ共通の1つのパスワードで判定する（2026-08-09、Googleアカウント
+//    認証から変更。モバイルSafari等でのGoogleログインの不安定さを避けるため）。
+//    パスワードはソースに直書きせず Script Properties の ADMIN_PASSWORD に保存する。
+//    このデプロイは2種類のURLで公開しているが、上記の変更によりどちらも
+//    access="ANYONE_ANONYMOUS"（匿名アクセス可）で問題なくなった。
+//      1) 公開用 → お客様のガチャ本体から呼ぶ
+//      2) 管理者用 → gacha_v18.htmlではなく、このURLを直接ブラウザで開くと
+//         管理画面(HTML)が表示される。中の操作はすべてパスワード照合(checkAdminPassword)で守る。
 // ============================================================
-
-// 管理画面へのアクセスを許可するGoogleアカウント一覧は、コード直書きではなく
-// スプレッドシートの admin_users シートで管理する（初回だけこの値で自動登録する）。
-const GACHA_ADMIN_EMAILS_SEED = ['omanbosan.lv@gmail.com'];
-const GACHA_ADMIN_SHEET_NAME = 'admin_users';
 
 const GACHA_BONUS_WORD = 'おまんぼ';
 const GACHA_FORTUNES = [
@@ -55,8 +50,8 @@ function doGet(e) {
     const action = e.parameter.action || '';
 
     // action指定が無ければ「管理画面」を返す。
-    // 公開デプロイ(匿名アクセス)でこの分岐に来ても、admin.html側の
-    // google.script.run呼び出しがisAdminUser()で弾かれるだけで実害はない。
+    // 公開デプロイでこの分岐に来ても、admin.html側のgoogle.script.run呼び出しが
+    // checkAdminPassword()で弾かれるだけで実害はない（HTMLの外枠だけなら誰でも見える）。
     if (!action) {
       // QRスキャン機能(getUserMedia)がGoogle標準のIFRAMEサンドボックス内だと
       // カメラ権限を委譲されずNotAllowedErrorになるため、ALLOWALLで生ページとして返す。
@@ -85,61 +80,36 @@ function doGet(e) {
 function doPost(e) { return err('GETを使用してください'); }
 
 // ============================================================
-//  認証（パスワードではなく、ログイン中のGoogleアカウントで判定）
+//  認証（スタッフ共通の1パスワード。Script PropertiesのADMIN_PASSWORDと照合）
 // ============================================================
-function ensureGachaAdminUsersSheet() {
-  const ss = getSpreadsheet();
-  var sh = ss.getSheetByName(GACHA_ADMIN_SHEET_NAME);
-  if (!sh) {
-    sh = ss.insertSheet(GACHA_ADMIN_SHEET_NAME);
-    sh.getRange(1,1,1,2).setValues([['email','note']]);
-    sh.getRange(1,1,1,2).setBackground('#1a1a2e').setFontColor('#c8a84a').setFontWeight('bold');
-    sh.setFrozenRows(1);
-    GACHA_ADMIN_EMAILS_SEED.forEach(function(email) { sh.appendRow([email, '初期登録']); });
-  }
-  return sh;
-}
+const GACHA_ADMIN_PASSWORD_PROP = 'ADMIN_PASSWORD';
 
-// admin_users シートのemail列を読み、許可されたGoogleアカウント一覧を返す
-function getAllowedGachaAdminEmails() {
-  const sh = ensureGachaAdminUsersSheet();
-  const rows = sh.getDataRange().getValues();
-  var emails = [];
-  for (var i = 1; i < rows.length; i++) {
-    var email = (rows[i][0] || '').toString().trim().toLowerCase();
-    if (email) emails.push(email);
-  }
-  return emails;
-}
-
-function isAdminUser() {
-  var email = (Session.getActiveUser().getEmail() || '').toLowerCase();
-  return !!email && getAllowedGachaAdminEmails().indexOf(email) !== -1;
-}
-
-function getCurrentUserEmail() {
-  return Session.getActiveUser().getEmail() || '';
+function checkAdminPassword(password) {
+  var expected = PropertiesService.getScriptProperties().getProperty(GACHA_ADMIN_PASSWORD_PROP);
+  if (!expected) throw new Error('管理者パスワードが未設定です（Script Propertiesを確認してください）');
+  if ((password || '') !== expected) throw new Error('パスワードが違います');
 }
 
 // admin.html（HTML Service）から google.script.run 経由で呼ばれる関数。
 // 生のJSON APIとしては公開しない（doGetのswitchに載せない）ことで、
 // 匿名デプロイ経由での呼び出し自体をそもそも不可能にしている。
-function getGachaStatsForAdmin() {
-  if (!isAdminUser()) throw new Error('このアカウント(' + (getCurrentUserEmail() || '未ログイン') + ')には権限がありません');
+function getGachaStatsForAdmin(password) {
+  checkAdminPassword(password);
   var parsed = JSON.parse(handleGachaStats().getContent());
   return parsed.data;
 }
-function getGachaLookupForAdmin(code) {
-  if (!isAdminUser()) throw new Error('このアカウント(' + (getCurrentUserEmail() || '未ログイン') + ')には権限がありません');
+function getGachaLookupForAdmin(code, password) {
+  checkAdminPassword(password);
   var parsed = JSON.parse(handleGachaLookup({ code: code }).getContent());
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.data;
 }
 // マルシェ現地でのクーポン利用（ポイント消費）。1pt=1円、100pt単位でのみ実行可能。
-// 生のJSON APIとしては公開せず、管理画面(要Googleログイン)からのみ呼べるようにする。
-function redeemGachaPointsForAdmin(code, amount) {
-  if (!isAdminUser()) throw new Error('このアカウント(' + (getCurrentUserEmail() || '未ログイン') + ')には権限がありません');
-  var parsed = JSON.parse(handleGachaRedeem({ code: code, amount: amount, staffEmail: getCurrentUserEmail() }).getContent());
+// 生のJSON APIとしては公開せず、管理画面(要パスワード)からのみ呼べるようにする。
+// 2026-08-09: Googleアカウント認証をやめたため、誰が処理したかはredemptionsシートに記録しない。
+function redeemGachaPointsForAdmin(code, amount, password) {
+  checkAdminPassword(password);
+  var parsed = JSON.parse(handleGachaRedeem({ code: code, amount: amount }).getContent());
   if (!parsed.ok) throw new Error(parsed.error);
   return parsed.data;
 }
