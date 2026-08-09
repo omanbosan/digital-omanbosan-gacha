@@ -58,9 +58,12 @@ function doGet(e) {
     // 公開デプロイ(匿名アクセス)でこの分岐に来ても、admin.html側の
     // google.script.run呼び出しがisAdminUser()で弾かれるだけで実害はない。
     if (!action) {
+      // QRスキャン機能(getUserMedia)がGoogle標準のIFRAMEサンドボックス内だと
+      // カメラ権限を委譲されずNotAllowedErrorになるため、ALLOWALLで生ページとして返す。
       return HtmlService.createHtmlOutputFromFile('admin')
         .setTitle('おまんぼガチャ 管理')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
+        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
     }
 
     var data = {};
