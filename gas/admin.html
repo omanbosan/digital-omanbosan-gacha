@@ -230,8 +230,14 @@ function setQrHint(text, isError) {
 function startQrScan() {
   document.getElementById('qr-scan-box').style.display = 'block';
   setQrHint('QRコードを枠内に写してください', false);
+  if (!location.protocol.startsWith('https') && location.hostname !== 'localhost') {
+    setQrHint('カメラはhttps接続でのみ使えます（このページのURLをご確認ください）', true);
+    return;
+  }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setQrHint('このブラウザはカメラ読み取りに対応していません。手入力してください', true);
+    // LINEやInstagram等のアプリ内蔵ブラウザではgetUserMedia自体が存在しないことが多い。
+    // その場合ここに来るので、Safari/Chromeで開き直すよう案内する。
+    setQrHint('このブラウザはカメラに対応していません。右下や右上の「…」等から「Safariで開く」を選んでからお試しください', true);
     return;
   }
   navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -243,7 +249,19 @@ function startQrScan() {
       qrRAFHandle = requestAnimationFrame(scanQrFrame);
     })
     .catch(function(e) {
-      setQrHint('カメラを起動できませんでした（権限をご確認ください）', true);
+      // エラーの種類ごとに具体的な対処法を出す(「権限をご確認ください」だけだと
+      // 何をすればいいか分からず切り分けできないという実際の相談を受けたため)。
+      var name = e && e.name;
+      if (name === 'NotAllowedError' || name === 'SecurityError' || name === 'PermissionDeniedError') {
+        setQrHint('カメラが拒否されています。iPhoneの「設定」→「Safari」→「カメラ」を確認するか、'
+          + 'このページのURL左のアイコンをタップして「Webサイトの設定」からカメラを「許可」に変更してください', true);
+      } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+        setQrHint('カメラが見つかりませんでした。端末にカメラが無いか、他のアプリが使用中の可能性があります', true);
+      } else if (name === 'NotReadableError' || name === 'TrackStartError') {
+        setQrHint('カメラを他のアプリが使用中のようです。他のアプリを閉じてからもう一度お試しください', true);
+      } else {
+        setQrHint('カメラを起動できませんでした（' + (name || (e && e.message) || '不明なエラー') + '）。手入力もご利用いただけます', true);
+      }
     });
 }
 
