@@ -88,6 +88,14 @@ body {
   color: #ffe566; font-weight: 900; letter-spacing: 0.14em; font-size: 0.85rem;
   text-shadow: 0 0 8px rgba(255,220,0,0.6);
 }
+#restore-link {
+  position: relative; z-index: 10;
+  display: inline-block; margin-bottom: 6px;
+  font-size: 0.68rem; color: #8899cc; text-decoration: underline;
+  cursor: pointer; letter-spacing: 0.03em; background: none; border: none;
+  font-family: 'Noto Sans JP', sans-serif; padding: 0;
+}
+#restore-link:hover { color: #aabbee; }
 #exchange-btn {
   background: linear-gradient(135deg, #cc6600, #ff3388);
   color: #fff; border: none; border-radius: 20px;
@@ -301,6 +309,49 @@ h1 {
 .popup-code  { display: block; background: rgba(255,180,0,0.1); border: 2px dashed rgba(255,180,0,0.6); border-radius: 10px; padding: 8px 12px; font-size: 1.1rem; font-weight: 900; letter-spacing: 0.2em; color: #ffe566; margin-bottom: 4px; }
 .popup-pt-gain { font-size: 0.95rem; font-weight: 900; margin-bottom: 14px; }
 
+/* ===== BASE COUPON BOX (初回プレイ記念、結果ポップアップ内) ===== */
+.base-coupon-box {
+  background: rgba(255,60,150,0.1);
+  border: 2px dashed rgba(255,80,180,0.6);
+  border-radius: 12px; padding: 10px 14px;
+  margin-bottom: 10px; text-align: center;
+}
+.base-coupon-hdr  { font-size: 0.78rem; color: #ff99dd; font-weight: 900; letter-spacing: 0.05em; margin-bottom: 4px; }
+.base-coupon-desc { font-size: 0.68rem; color: #cc99aa; line-height: 1.5; margin-bottom: 6px; }
+.base-coupon-code { font-size: 1.3rem; font-weight: 900; letter-spacing: 0.15em; color: #ffe566; text-shadow: 0 0 8px rgba(255,220,0,0.6); }
+
+/* ===== RESTORE POPUP ===== */
+#restore-popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:220; pointer-events:none; opacity:0; }
+#restore-popup.show { pointer-events:all; animation:popIn 0.3s ease forwards; }
+.restore-card {
+  position:relative; z-index:10;
+  background: linear-gradient(145deg, #0a1a20, #050a10);
+  border-radius:20px; padding:26px 28px; max-width:280px; width:85%; text-align:center;
+  box-shadow:0 0 30px rgba(80,180,255,0.3); border:2px solid rgba(100,180,255,0.4);
+  animation:cardPop 0.4s cubic-bezier(0.2,1.5,0.5,1) both;
+}
+.restore-title { font-size:1rem; font-weight:900; color:#88ccff; margin-bottom:8px; }
+.restore-desc  { font-size:0.75rem; color:#99aabb; line-height:1.6; margin-bottom:14px; }
+#restore-input {
+  width:100%; box-sizing:border-box; background:rgba(0,0,0,0.4);
+  border:1.5px solid rgba(100,180,255,0.4); border-radius:14px;
+  padding:9px 12px; color:#ffe566; font-size:1rem; font-weight:900;
+  letter-spacing:0.2em; text-align:center; text-transform:uppercase;
+  font-family:'Noto Sans JP', sans-serif; outline:none; margin-bottom:10px;
+}
+#restore-input:focus { border-color:rgba(100,200,255,0.8); }
+#restore-msg { font-size:0.75rem; margin-bottom:10px; min-height:1em; line-height:1.5; }
+.restore-btn {
+  background: linear-gradient(135deg,#0077cc,#00bbff); color:#fff; border:none;
+  border-radius:20px; padding:9px 26px; font-size:0.88rem; font-weight:900;
+  font-family:'Noto Sans JP',sans-serif; cursor:pointer; margin-right:6px;
+  box-shadow:0 0 12px rgba(0,150,255,0.5);
+}
+.restore-close {
+  background:transparent; color:#7788aa; border:1px solid #445566; border-radius:20px;
+  padding:8px 20px; font-size:0.85rem; font-family:'Noto Sans JP',sans-serif; cursor:pointer;
+}
+
 /* ===== LIMIT POPUP ===== */
 #limit-popup { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:150; pointer-events:none; opacity:0; }
 #limit-popup.show { pointer-events:all; animation:popIn 0.3s ease forwards; }
@@ -403,6 +454,7 @@ h1 {
 
 <!-- あなたのコード（マルシェ現地でスタッフに見せる用） -->
 <div id="my-code-bar">あなたのコード: <span id="my-code">---</span></div>
+<button id="restore-link" type="button">🔑 以前のコードで復元</button>
 
 <!-- 残り回数 -->
 <div id="remaining-bar">今日あと <span id="remaining-count">1</span> 回まわせます</div>
@@ -451,8 +503,26 @@ h1 {
       <div class="dinner-cmt"  id="dinner-cmt"></div>
     </div>
     <div  class="popup-pt-gain" id="popup-pt-gain"></div>
+    <div class="base-coupon-box" id="base-coupon-box" style="display:none;">
+      <div class="base-coupon-hdr">🎉 初回プレイ記念クーポン！</div>
+      <div class="base-coupon-desc">8月限定、BASEショップで使える500円OFFクーポンをプレゼント🎁<br>お会計時にこのコードを入力してね（お一人様1回まで）</div>
+      <div class="base-coupon-code" id="base-coupon-code">------</div>
+    </div>
     <a class="base-btn" id="base-shop-btn" href="https://omanbosan.base.shop" target="_blank">🛍️ ショップを見る</a>
     <button class="popup-btn" id="popup-close">閉じる</button>
+  </div>
+</div>
+
+<!-- コード復元ポップアップ -->
+<div id="restore-popup">
+  <div class="popup-backdrop" id="restore-backdrop"></div>
+  <div class="restore-card">
+    <div class="restore-title">🔑 コードで復元</div>
+    <div class="restore-desc">機種変更やSafariの「履歴とWebサイトデータの消去」でポイントが消えてしまった場合、以前の6桁コードを入力すると復元できます。</div>
+    <input id="restore-input" type="text" maxlength="6" placeholder="例: A1B2C3">
+    <div id="restore-msg"></div>
+    <button class="restore-btn" id="restore-submit">復元する</button>
+    <button class="restore-close" id="restore-close">とじる</button>
   </div>
 </div>
 
@@ -1062,7 +1132,7 @@ function requestGachaSpin() {
     updateCodeDisplay();
     updatePointDisplay();
     updateRemainingDisplay();
-    return { key: base.key, label: base.label, color: base.color, emoji: base.emoji, pt: d.pt };
+    return { key: base.key, label: base.label, color: base.color, emoji: base.emoji, pt: d.pt, baseCoupon: d.baseCoupon || null };
   }).catch(function() {
     showSpinError();
     return null;
@@ -1132,6 +1202,14 @@ function showResult(fortune) {
     ptEl.textContent = 'また明日！🌙';
     ptEl.style.color = '#888888';
   }
+  var couponBox = document.getElementById('base-coupon-box');
+  if (fortune.baseCoupon) {
+    document.getElementById('base-coupon-code').textContent = fortune.baseCoupon;
+    couponBox.style.display = '';
+  } else {
+    couponBox.style.display = 'none';
+  }
+
   document.getElementById('result-popup').classList.add('show');
   spawnConfetti(fortune.key === 'daigichi' || fortune.key === 'kichi');
 }
@@ -1373,6 +1451,54 @@ document.getElementById('bonus-input').addEventListener('keydown', function(e) {
   if (e.keyCode === 13) doBonus();
 });
 
+// ===== コード復元(iPhoneのSafariデータ消去等でlocalStorageを失った端末の救済) =====
+// コードを知っている＝本人とみなし、台帳のid列をこの端末の新しいcidに付け替えてもらう。
+// マルシェでのコード提示による現地交換と同じ信頼モデル。
+function gachaRestoreCode(code) {
+  var newId = ensureClientId();
+  var url = GAS_URL + '?action=gachaRestore&d=' + encodeURIComponent(JSON.stringify({ code: code, newId: newId }));
+  return fetch(url).then(function(r){ return r.json(); });
+}
+document.getElementById('restore-link').addEventListener('click', function() {
+  document.getElementById('restore-msg').textContent = '';
+  document.getElementById('restore-input').value = '';
+  document.getElementById('restore-popup').classList.add('show');
+});
+document.getElementById('restore-close').addEventListener('click', function() {
+  document.getElementById('restore-popup').classList.remove('show');
+});
+document.getElementById('restore-backdrop').addEventListener('click', function() {
+  document.getElementById('restore-popup').classList.remove('show');
+});
+document.getElementById('restore-submit').addEventListener('click', function() {
+  var code = (document.getElementById('restore-input').value || '').trim();
+  var msg  = document.getElementById('restore-msg');
+  if (!code) { msg.textContent = 'コードを入力してください'; msg.style.color = '#ff6666'; return; }
+  msg.textContent = '確認中...'; msg.style.color = '';
+  gachaRestoreCode(code).then(function(res) {
+    if (res && res.ok) {
+      _mem.points = res.data.points;
+      _mem.code   = res.data.code;
+      try { localStorage.setItem('omanbosan_gacha_code', res.data.code); } catch(e) {}
+      saveState();
+      updateCodeDisplay();
+      updatePointDisplay();
+      updateRemainingDisplay();
+      msg.textContent = '復元しました！(' + res.data.points + 'pt)';
+      msg.style.color = '#44ff88';
+      setTimeout(function() {
+        document.getElementById('restore-popup').classList.remove('show');
+      }, 1200);
+    } else {
+      msg.textContent = (res && res.error) || '復元に失敗しました';
+      msg.style.color = '#ff6666';
+    }
+  }).catch(function() {
+    msg.textContent = '通信エラーが発生しました';
+    msg.style.color = '#ff6666';
+  });
+});
+
 // ===== 初期化 =====
 loadState();
 updatePointDisplay();
@@ -1445,8 +1571,18 @@ v18.2 (2026-08-08): ポイント構成変更・クーポン画像保存機能
   - 交換ポップアップに「画像を保存してマルシェで見せる」ボタンを追加。外部ライブラリなしで
     Canvasにコード・ポイントを描画し、新規タブに開いて長押し保存してもらう方式(saveCouponImage)
   - #exchange-popup自体に残っていた display:none!important の消し忘れを修正（クーポンを見るボタンが機能していなかった）
+v18.3 (2026-08-13): コード復元機能・BASE初回プレイクーポン
+  - iPhone SafariでのlocalStorage消失(履歴とWebサイトデータの消去)によるポイント失効の救済策として、
+    「以前のコードで復元」機能を追加(gachaRestore)。コードを知っている端末に台帳のid列を付け替える方式
+  - 2026年8月限定、初めてガチャを回した人だけにBASEショップの500円OFFクーポンを1回だけ表示する機能を追加
+    - 台帳に baseCouponShown 列を追加し、初回spin時のみサーバー(handleGachaSpin)が返す(冪等・以後は二度と出さない)
+    - 実際のクーポンコード本体はGAS Script Propertiesの BASE_COUPON_CODE に保存(ADMIN_PASSWORDと同じ運用)
+    - 配布終了日時(2026-08-31 21:00 JST)をサーバー側にハードコードし、過ぎたら自動的に配布停止
+    - 不正利用対策はBASE側クーポンApp機能に委任(1人1回制限・発行枚数上限・有効期限)。
+      全員同じ共通コードなので、ガチャ側で「初回」を複数回演出されても実害はない設計
 =================
 -->
+
 
 </body>
 </html>

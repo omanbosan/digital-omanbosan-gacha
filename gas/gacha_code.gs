@@ -25,9 +25,26 @@ const GACHA_FORTUNES = [
   { key:'suekichi', pt:3,   weight:200 },
   { key:'kyo',      pt:1,   weight:490 },
 ];
-// 列: id, code, points, createdAt, updatedAt, usedDate, usedToday, bonusUsed
-const GACHA_HEADERS = ['id','code','points','createdAt','updatedAt','usedDate','usedToday','bonusUsed'];
+// 列: id, code, points, createdAt, updatedAt, usedDate, usedToday, bonusUsed, baseCouponShown
+const GACHA_HEADERS = ['id','code','points','createdAt','updatedAt','usedDate','usedToday','bonusUsed','baseCouponShown'];
 const GACHA_SHEET_NAME = 'gacha_points';
+
+// 2026-08限定・初回プレイ記念のBASEクーポン機能。
+// コード本体はソースに直書きせず Script Properties の BASE_COUPON_CODE に保存する
+// （ADMIN_PASSWORDと同じ運用方針。キャンペーン終了時はここを空にするだけでOFFにできる）。
+// BASE側の「クーポンApp」で実際にこのコードのクーポンを作成し、有効期限・発行枚数・
+// 1人1回制限を設定しておくこと（同じコードを使い回すため、複数回利用の防止はBASE側に任せる）。
+const GACHA_BASE_COUPON_PROP = 'BASE_COUPON_CODE';
+// 8月限定キャンペーンのため、この日時(JST)以降は自動的に配布を停止する。
+// BASE側のクーポン自体の有効期限は8/31 23:59までだが、ガチャでの配布はそれより
+// 前に締め切りたい(21:00)とのことなのでこちらは別に設定する。
+// Script Propertiesの値を消し忘れてもこの日時を過ぎれば自動でOFFになる二重の安全策。
+const GACHA_BASE_COUPON_END = '2026-08-31 21:00';
+function getBaseCouponCode() {
+  var nowJST = Utilities.formatDate(new Date(), 'Asia/Tokyo', 'yyyy-MM-dd HH:mm');
+  if (nowJST >= GACHA_BASE_COUPON_END) return '';
+  return (PropertiesService.getScriptProperties().getProperty(GACHA_BASE_COUPON_PROP) || '').trim();
+}
 
 function ok(data) {
   const o = ContentService.createTextOutput(JSON.stringify({ ok: true, data: data }));
@@ -70,6 +87,7 @@ function doGet(e) {
       case 'gachaSync':       return handleGachaSync(data);
       case 'gachaSpin':       return handleGachaSpin(data);
       case 'gachaBonus':      return handleGachaBonus(data);
+      case 'gachaRestore':    return handleGachaRestore(data);
       default:                return err('Unknown action: ' + action);
     }
   } catch(ex) {
@@ -144,6 +162,11 @@ function ensureGachaSheet() {
     sh.getRange(1,1,1,GACHA_HEADERS.length).setBackground('#1a1a2e').setFontColor('#c8a84a').setFontWeight('bold');
     sh.setFrozenRows(1);
   }
+  // 列追加マイグレーション: 後からGACHA_HEADERSに列を足した場合、既存シートのヘッダーが
+  // 追いついていなければ自動で追記する（baseCouponShown列の追加時に導入）。
+  if (sh.getLastColumn() < GACHA_HEADERS.length) {
+    sh.getRange(1, 1, 1, GACHA_HEADERS.length).setValues([GACHA_HEADERS]);
+  }
   return sh;
 }
 
@@ -181,14 +204,16 @@ function getOrCreateGachaRow(sh, id) {
         sh.getRange(i+1, 6, 1, 3).setValues([[usedDate, usedToday, bonusUsed]]);
       }
       return { rowIndex: i+1, code: rows[i][1], points: Number(rows[i][2]) || 0,
-               usedDate: usedDate, usedToday: usedToday, bonusUsed: bonusUsed };
+               usedDate: usedDate, usedToday: usedToday, bonusUsed: bonusUsed,
+               baseCouponShown: !!rows[i][8] };
     }
   }
 
   var code = genGachaCode(sh);
   var now  = new Date();
-  sh.appendRow([id, code, 0, now, now, today, 0, false]);
-  return { rowIndex: sh.getLastRow(), code: code, points: 0, usedDate: today, usedToday: 0, bonusUsed: false };
+  sh.appendRow([id, code, 0, now, now, today, 0, false, false]);
+  return { rowIndex: sh.getLastRow(), code: code, points: 0, usedDate: today, usedToday: 0, bonusUsed: false,
+           baseCouponShown: false };
 }
 
 // data: { id: 端末ごとの識別子, initPoints: 端末に既に貯まっていたポイント }
@@ -212,7 +237,7 @@ function handleGachaRegister(data) {
   var code = genGachaCode(sh);
   var now  = new Date();
   var today = todayJST();
-  sh.appendRow([id, code, initPoints, now, now, today, 0, false]);
+  sh.appendRow([id, code, initPoints, now, now, today, 0, false, false]);
   return ok({ code: code, points: initPoints });
 }
 
@@ -264,9 +289,21 @@ function handleGachaSpin(data) {
   sh.getRange(row.rowIndex, 5).setValue(new Date());
   sh.getRange(row.rowIndex, 7).setValue(newUsedToday);
 
+  // 2026-08限定・初回プレイ記念のBASEクーポン。
+  // 「このidにとって生まれて初めてのgachaSpinかどうか」で判定する(baseCouponShownは
+  // 新規行では必ずfalseから始まるため、register経由で既存ポイントを引き継いだ人でも
+  // 実際に1回でも回すまでは初回扱いになる)。付与は1回きり、以後は二度と返さない。
+  var baseCoupon = null;
+  var couponCode = getBaseCouponCode();
+  if (couponCode && !row.baseCouponShown) {
+    baseCoupon = couponCode;
+    sh.getRange(row.rowIndex, 9).setValue(true);
+  }
+
   return ok({
     key: fortune.key, pt: fortune.pt, points: newPoints, code: row.code,
-    usedToday: newUsedToday, effectiveLimit: effectiveLimit
+    usedToday: newUsedToday, effectiveLimit: effectiveLimit,
+    baseCoupon: baseCoupon
   });
 }
 
@@ -285,6 +322,29 @@ function handleGachaBonus(data) {
 
   sh.getRange(row.rowIndex, 8).setValue(true);
   return ok({ granted: true });
+}
+
+// data: { code: お客様が入力した6桁コード, newId: 今の端末の新しいcid }
+// iPhone Safariで「履歴とWebサイトデータの消去」等によりlocalStorageが消え、
+// 元のidを失った端末を救済するための復元機能。コードを知っている＝本人とみなし、
+// 台帳のid列を今の端末のcidに付け替える(所有権の再紐付け)。
+// マルシェでのコード提示による現地交換と同じ信頼モデル(コードを知っていれば本人扱い)。
+function handleGachaRestore(data) {
+  const code  = (data.code  || '').toString().trim().toUpperCase();
+  const newId = (data.newId || '').toString().trim();
+  if (!code)  return err('コードが必要です');
+  if (!newId) return err('端末IDの取得に失敗しました');
+
+  const sh = ensureGachaSheet();
+  const rows = sh.getDataRange().getValues();
+  for (var i = 1; i < rows.length; i++) {
+    if ((rows[i][1] || '').toString().toUpperCase() === code) {
+      sh.getRange(i+1, 1).setValue(newId);
+      sh.getRange(i+1, 5).setValue(new Date());
+      return ok({ code: rows[i][1], points: Number(rows[i][2]) || 0 });
+    }
+  }
+  return err('そのコードは見つかりません');
 }
 
 // data: { code: スタッフが端末画面で見せてもらう6桁コード }
