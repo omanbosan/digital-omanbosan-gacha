@@ -16,7 +16,6 @@
 //         管理画面(HTML)が表示される。中の操作はすべてパスワード照合(checkAdminPassword)で守る。
 // ============================================================
 
-const GACHA_BONUS_WORD = 'おまんぼ';
 const GACHA_FORTUNES = [
   { key:'daigichi', pt:300, weight:10  },
   { key:'kichi',    pt:100, weight:50  },
@@ -86,7 +85,6 @@ function doGet(e) {
       case 'gachaRegister':   return handleGachaRegister(data);
       case 'gachaSync':       return handleGachaSync(data);
       case 'gachaSpin':       return handleGachaSpin(data);
-      case 'gachaBonus':      return handleGachaBonus(data);
       case 'gachaRestore':    return handleGachaRestore(data);
       default:                return err('Unknown action: ' + action);
     }
@@ -267,7 +265,7 @@ function handleGachaSpin(data) {
 
   const sh  = ensureGachaSheet();
   const row = getOrCreateGachaRow(sh, id);
-  const effectiveLimit = 1 + (row.bonusUsed ? 1 : 0);
+  const effectiveLimit = 1; // 合言葉ボーナス機能は廃止したため常に1日1回
 
   if (row.usedToday >= effectiveLimit) {
     return err('LIMIT', { usedToday: row.usedToday, effectiveLimit: effectiveLimit });
@@ -305,23 +303,6 @@ function handleGachaSpin(data) {
     usedToday: newUsedToday, effectiveLimit: effectiveLimit,
     baseCoupon: baseCoupon
   });
-}
-
-// data: { id: 端末ごとの識別子, word: 入力された合言葉 }
-// 合言葉の正誤判定もサーバー側で行う（1日+1回ボーナス）。
-function handleGachaBonus(data) {
-  const id = (data.id || '').toString().trim();
-  if (!id) return err('idが必要です');
-  const word = (data.word || '').toString();
-
-  const sh  = ensureGachaSheet();
-  const row = getOrCreateGachaRow(sh, id);
-
-  if (word !== GACHA_BONUS_WORD) return ok({ granted: false });
-  if (row.bonusUsed) return ok({ granted: false, alreadyUsed: true });
-
-  sh.getRange(row.rowIndex, 8).setValue(true);
-  return ok({ granted: true });
 }
 
 // data: { code: お客様が入力した6桁コード, newId: 今の端末の新しいcid }
