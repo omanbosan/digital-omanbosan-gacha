@@ -524,6 +524,7 @@ h1 {
       <div class="base-coupon-hdr">🎉 初回プレイ記念クーポン！</div>
       <div class="base-coupon-desc">8月限定、BASEショップで使える500円OFFクーポンをプレゼント🎁<br>お会計時にこのコードを入力してね（お一人様1回まで）</div>
       <div class="base-coupon-code" id="base-coupon-code">------</div>
+      <button class="save-coupon-btn" id="save-base-coupon-btn" type="button" style="margin-top:8px;">📸 このクーポンを画像で保存</button>
     </div>
     <a class="base-btn" id="base-shop-btn" href="https://omanbosan.base.shop" target="_blank">🛍️ ショップを見る</a>
     <button class="popup-btn" id="popup-close">閉じる</button>
@@ -1463,6 +1464,55 @@ function saveCouponImage() {
   };
   qrImg.src = qrDataUrl;
 }
+// BASE初回プレイクーポン(2026年8月限定)を画像で保存する。
+// マルシェクーポンのsaveCouponImage()と同じ方式(Canvas自前描画→新規タブで長押し保存)。
+function saveBaseCouponImage() {
+  var code = document.getElementById('base-coupon-code').textContent || '------';
+  var canvas = document.createElement('canvas');
+  canvas.width = 640; canvas.height = 400;
+  var ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#12000a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = '#ff3388';
+  ctx.lineWidth = 4;
+  ctx.strokeRect(10, 10, canvas.width-20, canvas.height-20);
+
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ff99dd';
+  ctx.font = 'bold 24px sans-serif';
+  ctx.fillText('🎉 初回プレイ記念クーポン', canvas.width/2, 60);
+
+  ctx.fillStyle = '#ffe566';
+  ctx.font = 'bold 30px sans-serif';
+  ctx.fillText('BASEショップで使える', canvas.width/2, 110);
+  ctx.font = 'bold 44px sans-serif';
+  ctx.fillText('500円 OFF', canvas.width/2, 165);
+
+  ctx.fillStyle = '#cc99aa';
+  ctx.font = '16px sans-serif';
+  ctx.fillText('お会計時にこのコードを入力してください（お一人様1回まで）', canvas.width/2, 205);
+  ctx.fillText('有効期限: 2026年8月31日まで', canvas.width/2, 228);
+
+  ctx.fillStyle = 'rgba(255,180,0,0.1)';
+  ctx.fillRect(canvas.width/2 - 190, 250, 380, 80);
+  ctx.strokeStyle = 'rgba(255,180,0,0.6)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6,4]);
+  ctx.strokeRect(canvas.width/2 - 190, 250, 380, 80);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ffe566';
+  ctx.font = 'bold 42px monospace';
+  ctx.fillText(code, canvas.width/2, 305);
+
+  ctx.fillStyle = '#888';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('保存日時: ' + new Date().toLocaleString('ja-JP'), canvas.width/2, 370);
+
+  finishSaveCouponImage(canvas);
+}
+document.getElementById('save-base-coupon-btn').addEventListener('click', saveBaseCouponImage);
+
 document.getElementById('bonus-btn').addEventListener('click', doBonus);
 document.getElementById('bonus-input').addEventListener('keydown', function(e) {
   if (e.keyCode === 13) doBonus();
@@ -1614,8 +1664,11 @@ v18.4 (2026-08-13): 結果ポップアップでスクロールできなくなる
     max-height(85svh)とoverflow-y:autoを設定し、はみ出た場合はカード内だけスクロール可能に
   - ポップアップカード外でのタッチスクロールをJS側でも無効化(touchmove + preventDefault)し、
     Safari以外のブラウザでも同種の背景固着が起きないよう防御
+  - BASE初回プレイクーポンにも「📸 このクーポンを画像で保存」ボタンを追加(saveBaseCouponImage)。
+    マルシェクーポンと同じCanvas自前描画・新規タブ長押し保存の方式を流用
 =================
 -->
+
 
 
 
