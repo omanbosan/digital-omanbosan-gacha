@@ -393,11 +393,13 @@ h1 {
   background: rgba(0,0,0,0.4);
   border: 1.5px solid rgba(0,150,255,0.35);
   border-radius: 20px;
-  padding: 5px 14px;
+  padding: 5px 12px;
   color: #ffe566;
-  font-size: 0.78rem;
+  /* iOS Safariはinputのfont-sizeが16px未満だとフォーカス時にページを自動拡大するため、
+     見た目は小さいピル型でも16px以上を確保する(合言葉入力で画面が拡大される不具合の対策) */
+  font-size: 16px;
   font-family: 'Noto Sans JP', sans-serif;
-  width: 110px;
+  width: 118px;
   outline: none;
 }
 #bonus-input::placeholder { color: #556677; }
@@ -1666,6 +1668,9 @@ v18.4 (2026-08-13): 結果ポップアップでスクロールできなくなる
     Safari以外のブラウザでも同種の背景固着が起きないよう防御
   - BASE初回プレイクーポンにも「📸 このクーポンを画像で保存」ボタンを追加(saveBaseCouponImage)。
     マルシェクーポンと同じCanvas自前描画・新規タブ長押し保存の方式を流用
+v18.5 (2026-08-13): 合言葉入力欄でiOS Safariが自動拡大してしまう不具合を修正
+  - #bonus-inputのfont-sizeが0.78rem(約12.5px)だった。iOS Safariは16px未満のinputに
+    フォーカスするとページを自動ズームする仕様があり、これが原因だったため16pxに変更
 =================
 -->
 
