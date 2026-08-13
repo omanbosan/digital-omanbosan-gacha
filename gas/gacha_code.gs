@@ -12,8 +12,13 @@
 //    このデプロイは2種類のURLで公開しているが、上記の変更によりどちらも
 //    access="ANYONE_ANONYMOUS"（匿名アクセス可）で問題なくなった。
 //      1) 公開用 → お客様のガチャ本体から呼ぶ
-//      2) 管理者用 → gacha_v18.htmlではなく、このURLを直接ブラウザで開くと
-//         管理画面(HTML)が表示される。中の操作はすべてパスワード照合(checkAdminPassword)で守る。
+//      2) 管理者用 → 2026-08-13以前はこのURLを直接開くとHtmlServiceで管理画面(admin.html)を
+//         返していたが、GAS HtmlServiceが自動生成するsandbox iframeがcamera権限を委譲せず
+//         QRスキャンが原理的に不可能だったため、管理画面自体をGitHub Pages
+//         (https://omanbosan.github.io/digital-omanbosan-gacha/admin.html、iframeに包まれない
+//         純粋な静的ページ)へ全面移転した。このデプロイはもう管理画面HTMLを返さず、
+//         gachaAdminStats/gachaAdminLookup/gachaAdminRedeemのJSON APIとしてのみ使う
+//         （すべてcheckAdminPasswordで保護）。旧URLを直接開いた場合は移転先へ自動転送する。
 // ============================================================
 
 const GACHA_FORTUNES = [
@@ -65,34 +70,34 @@ function doGet(e) {
   try {
     const action = e.parameter.action || '';
 
-    // action指定が無ければ「管理画面」を返す。
-    // 公開デプロイでこの分岐に来ても、admin.html側のgoogle.script.run呼び出しが
-    // checkAdminPassword()で弾かれるだけで実害はない（HTMLの外枠だけなら誰でも見える）。
+    // action指定が無ければ、管理画面の移転先(GitHub Pages)を案内するだけの軽いページを返す。
+    // 2026-08-13判明: GAS HtmlServiceはページ本体を独自のsandbox iframe(script.googleusercontent.com、
+    // 別オリジン)で包んで配信しており、そのiframeのallow属性にcamera/microphoneが含まれない
+    // (ALLOWALLはX-Frame-Optionsの話でこれとは無関係)。そのためGAS上でHTMLを直接ホストする限り
+    // QRスキャンが原理的に常に失敗する。管理画面自体をGitHub Pages(admin.html、iframeに包まれない)
+    // に全面移転し、このGASデプロイは純粋なJSON APIとしてのみ使う構成に変更した。
     if (!action) {
-      // 2026-08-13判明: GAS HtmlServiceはページ本体を独自のsandbox iframeで包んで配信しており、
-      // そのiframeのallow属性にcamera/microphoneが含まれない(ALLOWALLはX-Frame-Optionsの話で無関係)。
-      // そのためこのページ内でgetUserMedia()するQRスキャンは原理的に常に失敗する。
-      // 対策として、カメラを使う部分はGitHub Pages上の別ページ(admin-scan.html)に切り出し、
-      // スキャン後に ?code=XXXXXX 付きでこのURLへ戻ってくる方式にした。
-      // その値をテンプレートでpresetCodeとして埋め込み、client側で自動検索させる。
-      var tmpl = HtmlService.createTemplateFromFile('admin');
-      tmpl.presetCode = (e.parameter.code || '').toString().trim();
-      return tmpl.evaluate()
-        .setTitle('おまんぼガチャ 管理')
-        .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-        .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+      var html = '<!doctype html><html lang="ja"><head><meta charset="utf-8">'
+        + '<meta http-equiv="refresh" content="0; url=https://omanbosan.github.io/digital-omanbosan-gacha/admin.html">'
+        + '<title>おまんぼガチャ 管理</title></head><body style="font-family:sans-serif;text-align:center;padding:40px 20px;">'
+        + '管理画面は移転しました。自動的に移動しない場合は<a href="https://omanbosan.github.io/digital-omanbosan-gacha/admin.html">こちら</a>を開いてください。'
+        + '</body></html>';
+      return HtmlService.createHtmlOutput(html).setTitle('おまんぼガチャ 管理');
     }
 
     var data = {};
     try { data = JSON.parse(e.parameter.d || '{}'); } catch(ex) { data = {}; }
 
     switch (action) {
-      case 'ping':            return ok({ pong: true });
-      case 'gachaRegister':   return handleGachaRegister(data);
-      case 'gachaSync':       return handleGachaSync(data);
-      case 'gachaSpin':       return handleGachaSpin(data);
-      case 'gachaRestore':    return handleGachaRestore(data);
-      default:                return err('Unknown action: ' + action);
+      case 'ping':              return ok({ pong: true });
+      case 'gachaRegister':     return handleGachaRegister(data);
+      case 'gachaSync':         return handleGachaSync(data);
+      case 'gachaSpin':         return handleGachaSpin(data);
+      case 'gachaRestore':      return handleGachaRestore(data);
+      case 'gachaAdminStats':   return handleGachaAdminStats(data);
+      case 'gachaAdminLookup':  return handleGachaAdminLookup(data);
+      case 'gachaAdminRedeem':  return handleGachaAdminRedeem(data);
+      default:                  return err('Unknown action: ' + action);
     }
   } catch(ex) {
     return err(ex.toString());
@@ -112,28 +117,23 @@ function checkAdminPassword(password) {
   if ((password || '') !== expected) throw new Error('パスワードが違います');
 }
 
-// admin.html（HTML Service）から google.script.run 経由で呼ばれる関数。
-// 生のJSON APIとしては公開しない（doGetのswitchに載せない）ことで、
-// 匿名デプロイ経由での呼び出し自体をそもそも不可能にしている。
-function getGachaStatsForAdmin(password) {
-  checkAdminPassword(password);
-  var parsed = JSON.parse(handleGachaStats().getContent());
-  return parsed.data;
+// 2026-08-13: 管理画面をGitHub Pages(admin.html)へ全面移転したことに伴い、
+// google.script.run専用だった管理者用関数を、password必須の生JSON APIに置き換えた。
+// パスワード照合(checkAdminPassword)がある限り、匿名デプロイ経由で公開しても
+// 生のgachaLookup/gachaRedeemを直接公開するのと違って誰でも使える状態にはならない。
+function handleGachaAdminStats(data) {
+  try { checkAdminPassword(data.password); } catch (ex) { return err(ex.message); }
+  return handleGachaStats();
 }
-function getGachaLookupForAdmin(code, password) {
-  checkAdminPassword(password);
-  var parsed = JSON.parse(handleGachaLookup({ code: code }).getContent());
-  if (!parsed.ok) throw new Error(parsed.error);
-  return parsed.data;
+function handleGachaAdminLookup(data) {
+  try { checkAdminPassword(data.password); } catch (ex) { return err(ex.message); }
+  return handleGachaLookup({ code: data.code });
 }
 // マルシェ現地でのクーポン利用（ポイント消費）。1pt=1円、100pt単位でのみ実行可能。
-// 生のJSON APIとしては公開せず、管理画面(要パスワード)からのみ呼べるようにする。
-// 2026-08-09: Googleアカウント認証をやめたため、誰が処理したかはredemptionsシートに記録しない。
-function redeemGachaPointsForAdmin(code, amount, password) {
-  checkAdminPassword(password);
-  var parsed = JSON.parse(handleGachaRedeem({ code: code, amount: amount }).getContent());
-  if (!parsed.ok) throw new Error(parsed.error);
-  return parsed.data;
+// 2026-08-09以降、誰が処理したかはredemptionsシートに記録しない(Googleアカウント認証廃止のため)。
+function handleGachaAdminRedeem(data) {
+  try { checkAdminPassword(data.password); } catch (ex) { return err(ex.message); }
+  return handleGachaRedeem({ code: data.code, amount: data.amount });
 }
 
 // ============================================================
