@@ -69,9 +69,15 @@ function doGet(e) {
     // 公開デプロイでこの分岐に来ても、admin.html側のgoogle.script.run呼び出しが
     // checkAdminPassword()で弾かれるだけで実害はない（HTMLの外枠だけなら誰でも見える）。
     if (!action) {
-      // QRスキャン機能(getUserMedia)がGoogle標準のIFRAMEサンドボックス内だと
-      // カメラ権限を委譲されずNotAllowedErrorになるため、ALLOWALLで生ページとして返す。
-      return HtmlService.createHtmlOutputFromFile('admin')
+      // 2026-08-13判明: GAS HtmlServiceはページ本体を独自のsandbox iframeで包んで配信しており、
+      // そのiframeのallow属性にcamera/microphoneが含まれない(ALLOWALLはX-Frame-Optionsの話で無関係)。
+      // そのためこのページ内でgetUserMedia()するQRスキャンは原理的に常に失敗する。
+      // 対策として、カメラを使う部分はGitHub Pages上の別ページ(admin-scan.html)に切り出し、
+      // スキャン後に ?code=XXXXXX 付きでこのURLへ戻ってくる方式にした。
+      // その値をテンプレートでpresetCodeとして埋め込み、client側で自動検索させる。
+      var tmpl = HtmlService.createTemplateFromFile('admin');
+      tmpl.presetCode = (e.parameter.code || '').toString().trim();
+      return tmpl.evaluate()
         .setTitle('おまんぼガチャ 管理')
         .addMetaTag('viewport', 'width=device-width, initial-scale=1')
         .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
