@@ -1290,29 +1290,31 @@ document.getElementById('ex-backdrop').addEventListener('click', function() {
 document.getElementById('save-coupon-btn').addEventListener('click', saveCouponImage);
 
 // クーポン画像を生成して保存する。外部ライブラリを使わず、Canvasで自前描画する。
-// スマホ(iOS/Androidとも)ではポップアップウィンドウに画像を開き、長押しで保存してもらう方式が
-// 一番確実なので、それをメインに。ポップアップがブロックされた場合はダウンロードリンクにフォールバック。
+// 以前は新規タブに画像を開いて長押し保存してもらう方式だったが、開いたタブから
+// 元のガチャ画面に戻れず迷子になるという指摘を受けて変更。タブは一切開かず、
+// 対応端末ではネイティブの共有シート(navigator.share)から直接「写真に保存」できるようにし、
+// 非対応環境ではその場でダウンロードするだけ(こちらもタブは開かない)にフォールバックする。
 function finishSaveCouponImage(canvas) {
-  var dataUrl = canvas.toDataURL('image/png');
-  var win = window.open('', '_blank');
-  if (win) {
-    win.document.write(
-      '<!DOCTYPE html><html><head><meta charset="utf-8"><title>おまんぼガチャ クーポン</title></head>' +
-      '<body style="margin:0;background:#111;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;font-family:sans-serif;">' +
-      '<img src="' + dataUrl + '" style="max-width:95vw;border-radius:12px;">' +
-      '<p style="color:#fff;font-size:14px;margin-top:14px;">画像を長押しして「写真に保存」を選んでください</p>' +
-      '</body></html>'
-    );
-    win.document.close();
-  } else {
-    // ポップアップがブロックされた場合のフォールバック（PCなどで有効）
+  var filename = 'omanbo-coupon-' + (_mem.code || 'code') + '.png';
+  canvas.toBlob(function(blob) {
+    if (!blob) return;
+    try {
+      var file = new File([blob], filename, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        navigator.share({ files: [file], title: 'おまんぼガチャ クーポン' }).catch(function() {});
+        return;
+      }
+    } catch (e) {}
+    // 共有シート非対応環境向けフォールバック。タブは開かず、その場でダウンロードするだけ。
+    var url = URL.createObjectURL(blob);
     var a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = 'omanbo-coupon-' + (_mem.code || 'code') + '.png';
+    a.href = url;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }
+    setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+  }, 'image/png');
 }
 function saveCouponImage() {
   var canvas = document.createElement('canvas');
